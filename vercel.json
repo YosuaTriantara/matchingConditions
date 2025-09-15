@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api.py"
+    }
+  ],
+  "env": {
+    "IDEAS_URL": "https://favbackend-dev.vercel.app/api/yos/ideas/list",
+    "CAMPAIGNS_URL": "https://favbackend-dev.vercel.app/api/yos/campaigns/list", 
+    "CHALLENGES_URL": "https://favbackend-dev.vercel.app/api/yos/challenges/list"
+  }
+}

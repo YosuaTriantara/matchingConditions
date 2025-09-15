@@ -1,0 +1,88 @@
+def get_ideas_for_challenge(challenge_id: str):
+    """Get all ideas for a specific challenge"""
+    result = supabase.table("challenge_ideas")\
+        .select("*, ideas(*), challenges(title)")\
+        .eq("challenge_id", challenge_id)\
+        .execute()
+    
+    return result.data
+
+def get_campaigns_for_challenge(challenge_id: str):
+    """Get all campaigns for a specific challenge"""  
+    result = supabase.table("challenge_campaigns")\
+        .select("*, campaigns(*), challenges(title)")\
+        .eq("challenge_id", challenge_id)\
+        .execute()
+    
+    return result.data
+
+def get_candidates_for_challenge_normalized(challenge_id: str):
+    """
+    Get all candidates (ideas + campaigns) for a challenge
+    Replacement untuk filter_candidates_by_type
+    """
+    # Get ideas
+    ideas_result = supabase.table("challenge_ideas")\
+        .select("ideas(*)")\
+        .eq("challenge_id", challenge_id)\
+        .execute()
+    
+    ideas_df = pd.DataFrame([item["ideas"] for item in ideas_result.data])
+    
+    # Get campaigns  
+    campaigns_result = supabase.table("challenge_campaigns")\
+        .select("campaigns(*)")\
+        .eq("challenge_id", challenge_id)\
+        .execute()
+    
+    campaigns_df = pd.DataFrame([item["campaigns"] for item in campaigns_result.data])
+    
+    # Check challenge type untuk filtering
+    challenge_result = supabase.table("challenges")\
+        .select("type")\
+        .eq("id", challenge_id)\
+        .single()\
+        .execute()
+    
+    challenge_type = challenge_result.data.get("type", "both").lower()
+    
+    if challenge_type in ["ideas", "ideas_only"]:
+        return ideas_df
+    elif challenge_type in ["campaigns", "campaign_only"]:
+        return campaigns_df
+    else:
+        return pd.concat([ideas_df, campaigns_df], ignore_index=True)
+
+def get_challenge_with_stats(challenge_id: str):
+    """Get challenge dengan statistics"""
+    
+    # Base challenge info
+    challenge = supabase.table("challenges")\
+        .select("*, users(name, username)")\
+        .eq("id", challenge_id)\
+        .single()\
+        .execute()
+    
+    # Count ideas
+    ideas_count = supabase.table("challenge_ideas")\
+        .select("id", count="exact")\
+        .eq("challenge_id", challenge_id)\
+        .execute()
+    
+    # Count campaigns
+    campaigns_count = supabase.table("challenge_campaigns")\
+        .select("id", count="exact")\
+        .eq("challenge_id", challenge_id)\
+        .execute()
+    
+    # Count recommendations  
+    recs_count = supabase.rpc("count_recommendations_for_challenge", {
+        "challenge_uuid": challenge_id
+    }).execute()
+    
+    return {
+        **challenge.data,
+        "ideas_count": ideas_count.count,
+        "campaigns_count": campaigns_count.count, 
+        "recommendations_count": recs_count.data
+    }
