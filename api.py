@@ -57,8 +57,8 @@ def is_valid_uuid(uuid_string: str) -> bool:
     except (ValueError, TypeError):
         return False
 
-@app.before_request
-def require_api_key():
+#@app.before_request
+#def require_api_key():
     print("Headers received:", dict(request.headers)) 
     result = check_api_key()
     if result:  # jika check_api_key mengembalikan error response
