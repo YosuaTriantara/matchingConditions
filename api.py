@@ -42,7 +42,7 @@ def check_api_key():
         return
 
     # Ambil API Key dari header
-    api_key = request.args.get("ML_API_KEY") or request.headers.get("X-API-KEY")
+    api_key = request.headers.get("Authorization")
 
     if not api_key:
         return jsonify({"error": "API Key is missing"}), 401
@@ -59,6 +59,7 @@ def is_valid_uuid(uuid_string: str) -> bool:
 
 @app.before_request
 def require_api_key():
+    print("Headers received:", dict(request.headers)) 
     result = check_api_key()
     if result:  # jika check_api_key mengembalikan error response
         return result
