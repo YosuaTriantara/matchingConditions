@@ -316,7 +316,6 @@ def save_idea_recommendation(
     rule_score: float = 0.0,
     similarity_score: float = 0.0,
     final_score: float = 0.0,
-    rank: int = None
 ) -> bool:
     """
     Save idea recommendation to challenge_idea_recommendations table
@@ -331,14 +330,12 @@ def save_idea_recommendation(
         "rule_score": safe_float(rule_score),
         "similarity_score": safe_float(similarity_score),
         "final_score": safe_float(final_score),
-        "rank": rank,
         "created_at": pd.Timestamp.utcnow().isoformat()
     }
 
     try:
-        supabase.table("challenge_idea_recommendations").upsert(
+        supabase.table("idea_recommendations").upsert(
             record,
-            on_conflict=["challenge_id", "idea_id"]
         ).execute()
         print(f"✅ Saved idea recommendation: {challenge_id} -> {idea_id}")
         return True
@@ -352,7 +349,6 @@ def save_campaign_recommendation(
     rule_score: float = 0.0,
     similarity_score: float = 0.0,
     final_score: float = 0.0,
-    rank: int = None
 ) -> bool:
     """
     Save campaign recommendation to challenge_campaign_recommendations table
@@ -367,14 +363,12 @@ def save_campaign_recommendation(
         "rule_score": safe_float(rule_score),
         "similarity_score": safe_float(similarity_score),
         "final_score": safe_float(final_score),
-        "rank": rank,
         "created_at": pd.Timestamp.utcnow().isoformat()
     }
 
     try:
-        supabase.table("challenge_campaign_recommendations").upsert(
+        supabase.table("campaign_recommendations").upsert(
             record,
-            on_conflict=["challenge_id", "campaign_id"]
         ).execute()
         print(f"✅ Saved campaign recommendation: {challenge_id} -> {campaign_id}")
         return True

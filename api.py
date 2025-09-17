@@ -5,8 +5,10 @@ import uuid
 import time
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from dotenv import load_dotenv
 import os
 import sys
+import time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -26,11 +28,27 @@ from src.utils import normalize_tags
 app = Flask(__name__)
 CORS(app)
 
+load_dotenv()
+VALID_API_KEY = os.getenv("ML_API_KEY")
+
 # Global URLs
 IDEAS_URL = "https://favbackend-dev.vercel.app/api/yos/ideas/list"
 CAMPAIGNS_URL = "https://favbackend-dev.vercel.app/api/yos/campaigns/list"
 CHALLENGES_URL = "https://favbackend-dev.vercel.app/api/yos/challenges/list"
 
+def check_api_key():
+    # Skip untuk static files atau endpoint tertentu
+    if request.endpoint in ["static", "health_check"]:
+        return
+
+    # Ambil API Key dari header
+    api_key = request.args.get("ML_API_KEY") or request.headers.get("X-API-KEY")
+
+    if not api_key:
+        return jsonify({"error": "API Key is missing"}), 401
+    if api_key != VALID_API_KEY:
+        return jsonify({"error": "Invalid API Key"}), 403
+    
 def is_valid_uuid(uuid_string: str) -> bool:
     """Check if string is valid UUID"""
     try:
@@ -38,6 +56,13 @@ def is_valid_uuid(uuid_string: str) -> bool:
         return True
     except (ValueError, TypeError):
         return False
+
+@app.before_request
+def require_api_key():
+    result = check_api_key()
+    if result:  # jika check_api_key mengembalikan error response
+        return result
+    return None
 
 @app.route("/health", methods=["GET"])
 def health_check():
@@ -517,15 +542,8 @@ def get_recommendations(challenge_id: str):
         # Process campaign recommendations
         for rec in campaign_recs.data:
             item = {
-                "id": rec["campaigns"]["id"],
-                "title": rec["campaigns"]["title"], 
-                "description": rec["campaigns"]["description"],
-                "type": "campaign",
-                "rule_score": float(rec["rule_score"]),
-                "similarity_score": float(rec["similarity_score"]),
-                "final_score": float(rec["final_score"]),
-                "rank": rec.get("rank"),
-                "created_at": rec["created_at"]
+                "confidenceScores": float(rec["final_score"]),
+                "CampaignId": rec["campaigns"]["id"],
             }
             
             if include_raw:
@@ -537,15 +555,121 @@ def get_recommendations(challenge_id: str):
         recommendations.sort(key=lambda x: (x["rank"] or 999, -x["final_score"]))
         
         return jsonify({
-            "success": True,
             "challenge_id": challenge_id,
-            "total_recommendations": len(recommendations),
-            "recommendations": recommendations[:limit]
+            "Matches [ ]": recommendations[:limit]
         })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Keep existing endpoints for backward compatibility
+import time
+
+@app.route("/recommendations/idea/<challenge_id>", methods=["GET"])
+def get_recommendations_idea(challenge_id: str):
+    """Get saved idea recommendations for a specific challenge (grouped format)"""
+    try:
+        if not is_valid_uuid(challenge_id):
+            return jsonify({"error": "Invalid challenge_id format"}), 400
+
+        limit = request.args.get("limit", 10, type=int)
+        include_raw = request.args.get("include_raw", "false").lower() == "true"
+
+        start_time = time.time()
+
+        # Fetch top-N idea recommendations (joined with ideas table)
+        idea_recs = (
+            supabase.table("idea_recommendations")
+            .select("*, ideas!inner(*)")
+            .eq("challenge_id", challenge_id)
+            .order("final_score", desc=True)
+            .limit(limit)
+            .execute()
+        )
+
+        # Aggregate into arrays
+        idea_ids = []
+        confidence_scores = []
+        raw_ideas = []  # only returned if include_raw=true
+
+        for rec in idea_recs.data or []:
+            # Collect ids and scores
+            idea_ids.append(rec["ideas"]["id"])
+            confidence_scores.append(float(rec["final_score"]))
+            if include_raw:
+                raw_ideas.append(rec["ideas"])
+
+        matches_obj = {
+            "challengeId": challenge_id,
+            "ideaIds": idea_ids,
+            "confidenceScores": confidence_scores,
+        }
+        if include_raw:
+            matches_obj["rawIdeas"] = raw_ideas
+
+        processing_time = f"{int((time.time() - start_time) * 1000)}ms"
+
+        return jsonify({
+            "matches": [matches_obj],
+            "processingTime": processing_time
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+import time
+
+@app.route("/recommendations/campaign/<challenge_id>", methods=["GET"])
+def get_recommendations_campaign(challenge_id: str):
+    """Get saved campaign recommendations for a specific challenge (grouped format)"""
+    try:
+        if not is_valid_uuid(challenge_id):
+            return jsonify({"error": "Invalid challenge_id format"}), 400
+
+        limit = request.args.get("limit", 10, type=int)
+        include_raw = request.args.get("include_raw", "false").lower() == "true"
+
+        start_time = time.time()
+
+        # Fetch top-N campaign recommendations (joined with campaigns table)
+        campaign_recs = (
+            supabase.table("campaign_recommendations")
+            .select("*, campaigns!inner(*)")
+            .eq("challenge_id", challenge_id)
+            .order("final_score", desc=True)
+            .limit(limit)
+            .execute()
+        )
+
+        # Aggregate into arrays
+        campaign_ids = []
+        confidence_scores = []
+        raw_campaigns = []  # only returned if include_raw=true
+
+        for rec in (campaign_recs.data or []):
+            campaign_ids.append(rec["campaigns"]["id"])
+            confidence_scores.append(float(rec["final_score"]))
+            if include_raw:
+                raw_campaigns.append(rec["campaigns"])
+
+        matches_obj = {
+            "challengeId": challenge_id,
+            "campaignIds": campaign_ids,
+            "confidenceScores": confidence_scores,
+        }
+        if include_raw:
+            matches_obj["rawCampaigns"] = raw_campaigns
+
+        processing_time = f"{int((time.time() - start_time) * 1000)}ms"
+
+        return jsonify({
+            "matches": [matches_obj],
+            "processingTime": processing_time
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @app.route("/challenges/<challenge_id>/conditions", methods=["GET"])
 def get_challenge_conditions(challenge_id: str):
     """Get conditions for a specific challenge"""
